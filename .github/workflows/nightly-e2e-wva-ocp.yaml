@@ -100,13 +100,23 @@ jobs:
       namespace: llm-d-nightly-wva
       # Service name is truncated to 63 chars: ...-inferencepoo-epp (not ...-inferencepool-epp)
       gateway_host: 'workload-variant-autoscaler-inferencepoo-epp'
+      required_gpus: 2
+      recommended_gpus: 4
+      pod_wait_timeout: '30m'
+      pod_readiness_delay: 180
+      image_override: 'ghcr.io/llm-d/llm-d-cuda-dev:latest'
+      allow_gpu_preemption: true
+      skip_cleanup: ${{ github.event.inputs.skip_cleanup == 'true' }}
+      pr_number: ${{ github.event.inputs.pr_number }}
+      pr_repo: ${{ github.event.inputs.pr_repo }}
       custom_deploy_script: |
         # WVA kustomize builds target namespace llm-d-autoscaler (do not pass a conflicting kubectl -n).
         WVA_DEPLOY_NS=llm-d-autoscaler
-        yq '.spec.template.spec.priorityClassName="nightly-gpu-critical"' -i guides/optimized-baseline/modelserver/gpu/vllm/base/patch-vllm.yaml
-        yq '.spec.template.spec.volumes += {"name": "triton-cache", "emptyDir": {}}' -i guides/optimized-baseline/modelserver/gpu/vllm/base/patch-vllm.yaml
-        yq '.spec.template.spec.containers[0].volumeMounts += {"mountPath": "/.triton", "name": "triton-cache"}' -i guides/optimized-baseline/modelserver/gpu/vllm/base/patch-vllm.yaml
-        yq '.spec.replicas=2' -i guides/optimized-baseline/modelserver/gpu/vllm/base/patch-vllm.yaml
+        yq '.spec.replicas = 2
+          | .spec.template.spec.priorityClassName = "nightly-gpu-critical"
+          | .spec.template.spec.volumes += {"name": "triton-cache", "emptyDir": {}}
+          | .spec.template.spec.containers[0].volumeMounts += {"mountPath": "/.triton", "name": "triton-cache"}' \
+          -i guides/optimized-baseline/modelserver/gpu/vllm/base/patch-vllm.yaml
         kubectl apply -k guides/optimized-baseline/modelserver/gpu/vllm/base -n ${NAMESPACE}
         helm install workload-variant-autoscaler-inferencepool-standalone \
           oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
@@ -119,6 +129,7 @@ jobs:
         WVA_TLS_OVERLAY_DIR=$(mktemp -d)
         cp -R guides/workload-autoscaling/components/tls-overlay/. "${WVA_TLS_OVERLAY_DIR}"
         printf "%s" "${PROMETHEUS_CA_CERT}" > "${WVA_TLS_OVERLAY_DIR}/ca.crt"
+        kubectl create namespace "${WVA_DEPLOY_NS}" --dry-run=client -o yaml | kubectl apply -f -
         kubectl apply -k "${WVA_TLS_OVERLAY_DIR}" -n "${WVA_DEPLOY_NS}"
 
         # Override WVA controller image to the nightly build from this run
@@ -140,13 +151,4 @@ jobs:
           -n "${WVA_DEPLOY_NS}" --for=condition=Available --timeout=300s
         kubectl apply -k guides/workload-autoscaling/optimized-baseline-autoscaling -n "${NAMESPACE}"
         kubectl get variantautoscaling,hpa -n "${NAMESPACE}"
-      required_gpus: 2
-      recommended_gpus: 4
-      pod_wait_timeout: '30m'
-      pod_readiness_delay: 180
-      image_override: 'ghcr.io/llm-d/llm-d-cuda-dev:latest'
-      allow_gpu_preemption: true
-      skip_cleanup: ${{ github.event.inputs.skip_cleanup == 'true' }}
-      pr_number: ${{ github.event.inputs.pr_number }}
-      pr_repo: ${{ github.event.inputs.pr_repo }}
     secrets: inherit
