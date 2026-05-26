@@ -76,7 +76,7 @@ jobs:
             | ${WKR}.containers[0].env = [{\"name\": \"VLLM_LOGGING_LEVEL\", \"value\": \"INFO\"}, {\"name\": \"HF_HUB_CACHE\", \"value\": \"/var/cache/huggingface\"}]
             | ${WKR}.volumes = [{\"name\": \"dshm\", \"emptyDir\": {\"medium\": \"Memory\", \"sizeLimit\": \"256Mi\"}}]
             | ${WKR}.containers[0].volumeMounts = [{\"name\": \"dshm\", \"mountPath\": \"/dev/shm\"}]
-            | del(${WKR}.containers[0].securityContext)
+            | del(${WKR}.containers[0].securityContext.runAsUser, ${WKR}.containers[0].securityContext.runAsGroup)
             | ${WKR}.containers[0].args[0] = \"exec vllm serve Qwen/Qwen3-0.6B --port ${PORT} --max-num-seq 64 --max-model-len 4096 --enforce-eager\"" -i "$f"
         done
         echo "Slim transform applied — model: Qwen3-0.6B, 1 GPU per role, LWS size 1"
